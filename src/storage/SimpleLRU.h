@@ -18,11 +18,14 @@ namespace Backend {
  */
 class SimpleLRU : public Afina::Storage {
 public:
-    SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cur_size(0), _lru_head(nullptr), _lru_tail(nullptr) {}
+    explicit SimpleLRU(size_t max_size = 1024) : _max_size(max_size), _cur_size(0), _lru_tail(nullptr) {
+        _lru_head.reset(nullptr);
+    }
 
     ~SimpleLRU() {
         _lru_index.clear();
-        _lru_head.reset(); // TODO: Here is stack overflow
+        while (_lru_tail)
+            DeleteNode(_lru_tail);
     }
 
     // Implements Afina::Storage interface
@@ -45,8 +48,9 @@ private:
     using lru_node = struct lru_node {
         const std::string key;
         std::string value;
-        std::unique_ptr <lru_node> prev;
-        lru_node *next;
+
+        lru_node *prev;
+        std::unique_ptr<lru_node> next;
     };
 
     // Maximum number of bytes could be stored in this cache.
@@ -57,21 +61,26 @@ private:
     // Main storage of lru_nodes, elements in this list ordered descending by "freshness".
     // List owns all nodes
     
-    lru_node *_lru_head;                  // new elements to head
-    std::unique_ptr<lru_node> _lru_tail;  // old elements in tail
+    std::unique_ptr<lru_node> _lru_head;  // new elements to head
+    lru_node *_lru_tail;                  // old elements in tail
     
     // Index of nodes from list above, allows fast random access to elements by lru_node#key
-    using lru_map = std::map<std::reference_wrapper<std::string>, std::reference_wrapper<lru_node>, std::less<std::string>>;
-    lru_map _lru_index;
-    
+    using ref_string = std::reference_wrapper<const std::string>;
+    using ref_lru_node = std::reference_wrapper<lru_node>;
+    using comp_string = std::less<std::string>;
+    std::map<ref_string, ref_lru_node, comp_string> _lru_index;
+
     // add new node to head
     bool AddNode(const std::string &key, const std::string &value);
-    
-    // delete node by key
-    bool DeleteNode(const std::string &key);
-    
-    // delete node from tail
-    bool DeleteTailNode();
+
+    // update pointers while deleting node
+    void UpdatePointers(lru_node *node);
+
+    // delete node by pointer
+    bool DeleteNode(lru_node *old_node);
+
+    // clean up memory if future size will be more than max size
+    bool CleanUpMemory(const std::string &key, const std::string &value, lru_node *node);
 };
 
 } // namespace Backend
