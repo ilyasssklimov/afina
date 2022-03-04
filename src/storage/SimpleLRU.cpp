@@ -26,6 +26,9 @@ bool SimpleLRU::AddNode(const std::string &key, const std::string &value)
 
 void SimpleLRU::UpdatePointers(lru_node *node)
 {
+    if (!node)
+        return;
+
     lru_node *prev = node->prev;
     lru_node *next = node->next.get();
 
@@ -64,34 +67,88 @@ bool SimpleLRU::DeleteNode(lru_node *old_node)
 }
 
 
-bool SimpleLRU::CleanUpMemory(const std::string &key, const std::string &value, lru_node *node)
+size_t SimpleLRU::CountSize(const std::string &key, const std::string &value, lru_node *node)
 {
     size_t adding_size = value.size();
 
-    // count size for new node
-    if (node != nullptr)
+    if (!node)
+    {
+        adding_size += key.size();
+    }
+    else
     {
         size_t old_size = node->value.size();
-        if (adding_size > old_size)
-            adding_size -= old_size;
+        if (adding_size >= old_size)
+             adding_size -= old_size;
     }
 
-    bool is_deleted = false;  // check if finding node deleted
-    // clean up memory for new node
+    return adding_size;
+}
+
+
+bool SimpleLRU::CleanUpMemory(const size_t adding_size)
+{
     while (_cur_size + adding_size > _max_size)
     {
-        if (_lru_tail->key == key)
-            is_deleted = true;
-
         if (!DeleteNode(_lru_tail))
             return false;
     }
 
-    if (node && !is_deleted)
-        DeleteNode(node);
-
     return true;
 }
+
+
+void SimpleLRU::MoveNodeToHead(std::unique_ptr<lru_node> &node)
+{
+    if (node == _lru_head)
+        return;
+
+    lru_node *finding_node = node.get();
+    _lru_head->prev = finding_node;
+    finding_node->next = std::move(_lru_head);
+    finding_node->prev = nullptr;
+    _lru_head = std::move(node);
+}
+
+
+bool SimpleLRU::SetNodeValue(lru_node *node, const std::string &value)
+{
+    if (!node)
+    {
+        return false;
+    }
+    else
+    {
+        _cur_size += value.size() - node->value.size();
+        node->value = value;
+        return true;
+    }
+}
+
+
+bool SimpleLRU::SetNode(const std::string &key, const std::string &value, lru_node *finding_node)
+{
+    size_t adding_size = CountSize(key, value, finding_node);
+    std::unique_ptr<lru_node> node;
+    if (finding_node && finding_node->prev)
+        node = std::move(finding_node->prev->next);
+
+    if (!finding_node)
+    {
+        return CleanUpMemory(adding_size) && AddNode(key, value);
+    }
+    else
+    {
+        if (finding_node->prev)
+        {
+            UpdatePointers(finding_node);
+            MoveNodeToHead(node);
+        }
+
+        return CleanUpMemory(adding_size) && SetNodeValue(finding_node, value);
+    }
+}
+
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value)
@@ -104,7 +161,7 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
     if (finding_it != _lru_index.end())
         finding_node = &finding_it->second.get();
 
-    return CleanUpMemory(key, value, finding_node) && AddNode(key, value);
+    return SetNode(key, value, finding_node);
 }
 
 
@@ -118,7 +175,8 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
     if (finding_it != _lru_index.end())
         return false;
 
-    return CleanUpMemory(key, value, nullptr) && AddNode(key, value);
+    size_t adding_size = CountSize(key, value, nullptr);
+    return CleanUpMemory(adding_size) && AddNode(key, value);
 }
 
 
@@ -129,19 +187,17 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
         return false;
 
     auto finding_it = _lru_index.find(key);
-    if (finding_it != _lru_index.end())
-        return CleanUpMemory(key, value, &finding_it->second.get()) && AddNode(key, value);
-    else
+    if (finding_it == _lru_index.end())
         return false;
+
+    lru_node *finding_node = &finding_it->second.get();
+    return SetNode(key, value, finding_node);
 }
 
 
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Delete(const std::string &key)
 {
-    if (key.empty())
-        return false;
-
     auto finding_it = _lru_index.find(key);
     if (finding_it == _lru_index.end())
         return false;
@@ -157,27 +213,18 @@ bool SimpleLRU::Get(const std::string &key, std::string &value)
         return false;
 
     auto finding_it = _lru_index.find(key);
-    if (finding_it != _lru_index.end())
-    {
-        lru_node *finding_node = &finding_it->second.get();
-        if (finding_node->prev)
-        {
-            std::unique_ptr<lru_node> node = std::move(finding_node->prev->next);
-            UpdatePointers(finding_node);
-            _lru_head->prev = finding_node;
-            
-            finding_node->next = std::move(_lru_head);
-            finding_node->prev = nullptr;
-            _lru_head = std::move(node);
-        }
-        
-        value = _lru_head->value;
-        return true;
-    }
-    else
-    {
+    if (finding_it == _lru_index.end())
         return false;
+
+    lru_node *finding_node = &finding_it->second.get();
+    if (finding_node->prev)
+    {
+        std::unique_ptr<lru_node> node = std::move(finding_node->prev->next);
+        UpdatePointers(finding_node);
+        MoveNodeToHead(node);
     }
+    value = _lru_head->value;
+    return true;
 }
 
 

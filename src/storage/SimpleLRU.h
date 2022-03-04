@@ -53,23 +53,6 @@ private:
         std::unique_ptr<lru_node> next;
     };
 
-    // Maximum number of bytes could be stored in this cache.
-    // i.e all (keys+values) must be not greater than the _max_size
-    std::size_t _max_size;
-    std::size_t _cur_size;
-
-    // Main storage of lru_nodes, elements in this list ordered descending by "freshness".
-    // List owns all nodes
-    
-    std::unique_ptr<lru_node> _lru_head;  // new elements to head
-    lru_node *_lru_tail;                  // old elements in tail
-    
-    // Index of nodes from list above, allows fast random access to elements by lru_node#key
-    using ref_string = std::reference_wrapper<const std::string>;
-    using ref_lru_node = std::reference_wrapper<lru_node>;
-    using comp_string = std::less<std::string>;
-    std::map<ref_string, ref_lru_node, comp_string> _lru_index;
-
     // add new node to head
     bool AddNode(const std::string &key, const std::string &value);
 
@@ -79,8 +62,37 @@ private:
     // delete node by pointer
     bool DeleteNode(lru_node *old_node);
 
+    // count adding size for new node
+    size_t CountSize(const std::string &key, const std::string &value, lru_node *node);
+
     // clean up memory if future size will be more than max size
-    bool CleanUpMemory(const std::string &key, const std::string &value, lru_node *node);
+    bool CleanUpMemory(const size_t adding_size);
+
+    // move node to head
+    void MoveNodeToHead(std::unique_ptr<lru_node> &node);
+
+    // set value to node
+    bool SetNodeValue(lru_node *node, const std::string &value);
+
+    // set or add node with move to head
+    bool SetNode(const std::string &key, const std::string &value, lru_node *finding_node);
+
+private:
+    // Maximum number of bytes could be stored in this cache.
+    // i.e all (keys+values) must be not greater than the _max_size
+    std::size_t _max_size;
+    std::size_t _cur_size;
+
+    // Main storage of lru_nodes, elements in this list ordered descending by "freshness".
+    // List owns all nodes
+    std::unique_ptr<lru_node> _lru_head;  // new elements to head
+    lru_node *_lru_tail;                  // old elements in tail
+    
+    // Index of nodes from list above, allows fast random access to elements by lru_node#key
+    using ref_string = std::reference_wrapper<const std::string>;
+    using ref_lru_node = std::reference_wrapper<lru_node>;
+    using comp_string = std::less<std::string>;
+    std::map<ref_string, ref_lru_node, comp_string> _lru_index;
 };
 
 } // namespace Backend
