@@ -114,15 +114,12 @@ void SimpleLRU::MoveNodeToHead(std::unique_ptr<lru_node> &node)
 bool SimpleLRU::SetNodeValue(lru_node *node, const std::string &value)
 {
     if (!node)
-    {
         return false;
-    }
-    else
-    {
-        _cur_size += value.size() - node->value.size();
-        node->value = value;
-        return true;
-    }
+
+    _cur_size += value.size() - node->value.size();
+    node->value = value;
+
+    return true;
 }
 
 
