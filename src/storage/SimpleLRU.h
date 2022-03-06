@@ -74,9 +74,6 @@ private:
     // set value to node
     bool SetNodeValue(lru_node *node, const std::string &value);
 
-    // set or add node with move to head
-    bool SetNode(const std::string &key, const std::string &value, lru_node *finding_node);
-
 private:
     // Maximum number of bytes could be stored in this cache.
     // i.e all (keys+values) must be not greater than the _max_size

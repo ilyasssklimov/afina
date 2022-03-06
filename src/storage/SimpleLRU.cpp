@@ -126,30 +126,6 @@ bool SimpleLRU::SetNodeValue(lru_node *node, const std::string &value)
 }
 
 
-bool SimpleLRU::SetNode(const std::string &key, const std::string &value, lru_node *finding_node)
-{
-    size_t adding_size = CountDeltaSize(key, value, finding_node);
-    std::unique_ptr<lru_node> node;
-    if (finding_node && finding_node->prev)
-        node = std::move(finding_node->prev->next);
-
-    if (!finding_node)
-    {
-        return CleanUpMemory(adding_size) && AddNode(key, value);
-    }
-    else
-    {
-        if (finding_node->prev)
-        {
-            UpdatePointers(finding_node);
-            MoveNodeToHead(node);
-        }
-
-        return CleanUpMemory(adding_size) && SetNodeValue(finding_node, value);
-    }
-}
-
-
 // See MapBasedGlobalLockImpl.h
 bool SimpleLRU::Put(const std::string &key, const std::string &value)
 { 
@@ -157,11 +133,23 @@ bool SimpleLRU::Put(const std::string &key, const std::string &value)
         return false;
 
     auto finding_it = _lru_index.find(key);
-    lru_node *finding_node = nullptr;
-    if (finding_it != _lru_index.end())
-        finding_node = &finding_it->second.get();
-
-    return SetNode(key, value, finding_node);
+    if (finding_it == _lru_index.end())
+    {
+        size_t adding_size = CountDeltaSize(key, value, nullptr);
+        return CleanUpMemory(adding_size) && AddNode(key, value);
+    }
+    else
+    {
+        lru_node *finding_node = &finding_it->second.get();
+        size_t adding_size = CountDeltaSize(key, value, finding_node);
+        if (finding_node->prev)
+        {
+            std::unique_ptr<lru_node> node = std::move(finding_node->prev->next);
+            UpdatePointers(finding_node);
+            MoveNodeToHead(node);
+        }
+        return CleanUpMemory(adding_size) && SetNodeValue(finding_node, value);
+    }
 }
 
 
@@ -191,7 +179,14 @@ bool SimpleLRU::Set(const std::string &key, const std::string &value)
         return false;
 
     lru_node *finding_node = &finding_it->second.get();
-    return SetNode(key, value, finding_node);
+    size_t adding_size = CountDeltaSize(key, value, finding_node);
+    if (finding_node->prev)
+    {
+        std::unique_ptr<lru_node> node = std::move(finding_node->prev->next);
+        UpdatePointers(finding_node);
+        MoveNodeToHead(node);
+    }
+    return CleanUpMemory(adding_size) && SetNodeValue(finding_node, value);
 }
 
 
