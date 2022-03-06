@@ -63,7 +63,7 @@ private:
     bool DeleteNode(lru_node *old_node);
 
     // count adding size for new node
-    size_t CountSize(const std::string &key, const std::string &value, lru_node *node);
+    size_t CountDeltaSize(const std::string &key, const std::string &value, lru_node *node);
 
     // clean up memory if future size will be more than max size
     bool CleanUpMemory(const size_t adding_size);

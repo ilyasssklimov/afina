@@ -67,7 +67,7 @@ bool SimpleLRU::DeleteNode(lru_node *old_node)
 }
 
 
-size_t SimpleLRU::CountSize(const std::string &key, const std::string &value, lru_node *node)
+size_t SimpleLRU::CountDeltaSize(const std::string &key, const std::string &value, lru_node *node)
 {
     size_t adding_size = value.size();
 
@@ -78,8 +78,11 @@ size_t SimpleLRU::CountSize(const std::string &key, const std::string &value, lr
     else
     {
         size_t old_size = node->value.size();
-        if (adding_size >= old_size)
-             adding_size -= old_size;
+
+        if (old_size <= adding_size)
+            adding_size -= old_size;
+        else
+            adding_size = 0;
     }
 
     return adding_size;
@@ -125,7 +128,7 @@ bool SimpleLRU::SetNodeValue(lru_node *node, const std::string &value)
 
 bool SimpleLRU::SetNode(const std::string &key, const std::string &value, lru_node *finding_node)
 {
-    size_t adding_size = CountSize(key, value, finding_node);
+    size_t adding_size = CountDeltaSize(key, value, finding_node);
     std::unique_ptr<lru_node> node;
     if (finding_node && finding_node->prev)
         node = std::move(finding_node->prev->next);
@@ -172,7 +175,7 @@ bool SimpleLRU::PutIfAbsent(const std::string &key, const std::string &value)
     if (finding_it != _lru_index.end())
         return false;
 
-    size_t adding_size = CountSize(key, value, nullptr);
+    size_t adding_size = CountDeltaSize(key, value, nullptr);
     return CleanUpMemory(adding_size) && AddNode(key, value);
 }
 
